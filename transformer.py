@@ -38,7 +38,7 @@ class DecoderBlock:
         mean = x.mean(axis=-1, keepdims=True)
         var = x.var(axis=-1, keepdims=True)
 
-        xNorm = (x - mean) / np.sqrt(var)
+        xNorm = (x - mean) / np.sqrt(var + 1e-5)
 
         return gamma * xNorm + beta
     
@@ -56,7 +56,7 @@ class DecoderBlock:
         V = V.transpose(0, 2, 1, 3)
 
         
-        QKT = (Q @ K.transpose(0, 1, 3, 2)) / np.sqrt(self.d_model)
+        QKT = (Q @ K.transpose(0, 1, 3, 2)) / np.sqrt(d_head)
 
         if mask is not None:
             if mask.ndim == 2:
@@ -77,6 +77,22 @@ class DecoderBlock:
         return out
 
 
-    def feedForward(self, x):
+    
+    def feedForward(self, x, mask):
+        B, T, _ = x.shape
+        attn_out = self.MHA(x, mask)
+        residual = x + attn_out
+        normedResidual = self.LayerNorm(residual, self.gamma1, self.beta1)
+
+        h = normedResidual @ self.FF1 + self.b1
+
+        h = np.maximum(h, 0) # relu
+
+        ff_out = h @ self.FF2 + self.b2
+
+        ff_out += normedResidual # add back residuals (FROM AFTER). math equivalent to ff_out + x + attn_out
+        normalized = self.LayerNorm(ff_out, self.gamma2, self.beta2)
+
+        return normalized
 
     
